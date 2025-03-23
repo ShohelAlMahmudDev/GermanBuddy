@@ -2,7 +2,7 @@ from typing import List, Dict, TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 from app.config import get_llm
-from app.tools import check_grammar, define_word, pronounce_text, language_translator_en, language_translator_bn
+from app.tools import check_grammar, define_word, pronounce_text, language_translator_en, language_translator_bn, explain_grammar
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -56,6 +56,7 @@ def teacher_agent(state: State) -> State:
         "pronunciation_agent": ["pronounce", "pronunciation", "say"],
         "translator_en_agent": ["translate to english", "translation english", "english", "en"],
         "translator_bn_agent": ["translate to bangla", "translation bangla", "bangla", "bn"],
+        "grammar_explain_agent": ["explain grammar", "grammar explanation", "explain"],
     }
     
     state["next"] = "conversation_agent"  # Default to conversation
@@ -70,7 +71,7 @@ def grammar_agent(state: State) -> State:
     """Check grammar of user input."""
     try:
         user_input = state["messages"][-1]["content"]
-        response = check_grammar.invoke(user_input)  # Use invoke instead of __call__
+        response = check_grammar.invoke(user_input)
         state["messages"].append({"role": "ai", "content": response})
         progress.update("No grammar errors" in response)
     except Exception as e:
@@ -83,7 +84,7 @@ def vocabulary_agent(state: State) -> State:
     try:
         user_input = state["messages"][-1]["content"].strip()
         words = user_input.split()
-        response = define_word.invoke(words[-1] if words else "")  # Use invoke
+        response = define_word.invoke(words[-1] if words else "")
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in vocabulary agent: {str(e)}"})
@@ -94,7 +95,7 @@ def pronunciation_agent(state: State) -> State:
     """Generate pronunciation audio for text."""
     try:
         user_input = state["messages"][-1]["content"]
-        response = pronounce_text.invoke(user_input)  # Use invoke
+        response = pronounce_text.invoke(user_input)
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in pronunciation agent: {str(e)}"})
@@ -109,7 +110,7 @@ def translator_en_agent(state: State) -> State:
             text_to_translate = user_input.lower().split("translate to english")[-1].strip()
         else:
             text_to_translate = user_input
-        response = language_translator_en.invoke(text_to_translate)  # Use invoke
+        response = language_translator_en.invoke(text_to_translate)
         full_response = f"English: {response}"
         logger.info(f"English translation: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
@@ -126,12 +127,27 @@ def translator_bn_agent(state: State) -> State:
             text_to_translate = user_input.lower().split("translate to bangla")[-1].strip()
         else:
             text_to_translate = user_input
-        response = language_translator_bn.invoke(text_to_translate)  # Use invoke
+        response = language_translator_bn.invoke(text_to_translate)
         full_response = f"Bangla: {response}"
         logger.info(f"Bangla translation: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in Bangla translation: {str(e)}"})
+    state["next"] = END
+    return state
+
+def grammar_explain_agent(state: State) -> State:
+    """Explain the grammar of the user input in German and English."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        if "explain grammar" in user_input.lower():
+            text_to_explain = user_input.lower().split("explain grammar")[-1].strip()
+        else:
+            text_to_explain = user_input
+        response = explain_grammar.invoke(text_to_explain)
+        state["messages"].append({"role": "ai", "content": response})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in grammar explanation: {str(e)}"})
     state["next"] = END
     return state
 
@@ -143,11 +159,9 @@ def conversation_agent(state: State) -> State:
         prompt = f"Respond in German at {level} level to: {user_input}"
         german_response = get_llm().invoke([HumanMessage(content=prompt)]).content.strip()
         
-        # Generate translations using invoke
         english_response = language_translator_en.invoke(german_response)
         bangla_response = language_translator_bn.invoke(german_response)
         
-        # Format the full response with clear separation
         full_response = (
             f"{german_response}\n"
             f"{english_response}\n"
@@ -172,6 +186,7 @@ def create_graph() -> StateGraph:
         graph.add_node("pronunciation_agent", pronunciation_agent)
         graph.add_node("translator_en_agent", translator_en_agent)
         graph.add_node("translator_bn_agent", translator_bn_agent)
+        graph.add_node("grammar_explain_agent", grammar_explain_agent)
         graph.add_node("conversation_agent", conversation_agent)
 
         graph.set_entry_point("teacher_agent")
@@ -184,6 +199,7 @@ def create_graph() -> StateGraph:
                 "pronunciation_agent": "pronunciation_agent",
                 "translator_en_agent": "translator_en_agent",
                 "translator_bn_agent": "translator_bn_agent",
+                "grammar_explain_agent": "grammar_explain_agent",
                 "conversation_agent": "conversation_agent",
                 END: END
             }

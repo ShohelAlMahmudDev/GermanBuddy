@@ -6,14 +6,7 @@ import os
 
 @tool
 def check_grammar(text: str) -> str:
-    """Checks the grammar of the input text in German and returns corrections or confirmation.
-    
-    Args:
-        text (str): The text to check for grammatical errors
-        
-    Returns:
-        str: A message indicating no errors or listing corrections
-    """
+    """Checks the grammar of the input text in German and returns corrections or confirmation."""
     try:
         if not text.strip():
             return "Please provide text to check grammar."
@@ -28,14 +21,7 @@ def check_grammar(text: str) -> str:
 
 @tool
 def define_word(word: str) -> str:
-    """Defines a German word using a mock dictionary.
-    
-    Args:
-        word (str): The German word to define
-        
-    Returns:
-        str: The definition if found, or an error message if not
-    """
+    """Defines a German word using a mock dictionary."""
     try:
         if not word.strip():
             return "Please provide a word to define."
@@ -46,14 +32,7 @@ def define_word(word: str) -> str:
 
 @tool
 def pronounce_text(text: str) -> str:
-    """Generates pronunciation audio for the given text in German and returns the file URL.
-    
-    Args:
-        text (str): The text to pronounce
-        
-    Returns:
-        str: The URL to the generated audio file
-    """
+    """Generates pronunciation audio for the given text in German and returns the file URL."""
     try:
         if not text.strip():
             return "Please provide text to pronounce."
@@ -67,43 +46,58 @@ def pronounce_text(text: str) -> str:
 
 @tool
 def language_translator_en(text: str) -> str:
-    """Translates the given text to English.
-    
-    Args:
-        text (str): The text to translate to English
-        
-    Returns:
-        str: The translated text in English
-    """
+    """Translates the given text to English."""
     try:
         if not text.strip():
             return "Please provide text to translate to English."
         translator = GoogleTranslator(source='auto', target='en')
         result = translator.translate(text)
-        #print(f"Translated (to English): {result}")
+        print(f"Translated (to English): {result}")
         return result
     except Exception as e:
         return f"Error translating to English: {str(e)}"
 
 @tool
 def language_translator_bn(text: str) -> str:
-    """Translates the given text to Bengali (Bangla).
-    
-    Args:
-        text (str): The text to translate to Bengali
-        
-    Returns:
-        str: The translated text in Bengali
-    """
+    """Translates the given text to Bengali (Bangla)."""
     try:
         if not text.strip():
             return "Please provide text to translate to Bengali."
         translator = GoogleTranslator(source='auto', target='bn')
         result = translator.translate(text)
-        #print(f"Translated (to Bengali): {result}")
-        # Verify Bangla output (optional debugging)
-        if result == text and translator.detect(text) != 'bn':
-            return "Translation failed: No Bangla output generated."
+        print(f"Translated (to Bengali): {result}")
         return result
     except Exception as e:
         return f"Error translating to Bengali: {str(e)}"
+
+@tool
+def explain_grammar(text: str) -> str:
+    """Explains the grammar of the given German text in German and English."""
+    try:
+        if not text.strip():
+            return "Please provide text to explain grammar."
+
+        tool = LanguageTool('de-DE')
+        matches = tool.check(text)
+        
+        # Basic grammar analysis (expand as needed)
+        explanation_de = "Grammatikalische Erklärung:\n"
+        explanation_en = "Grammar Explanation:\n"
+        
+        if not matches:
+            explanation_de += "Der Satz ist grammatikalisch korrekt.\n"
+            explanation_en += "The sentence is grammatically correct.\n"
+        else:
+            for match in matches:
+                explanation_de += f"- {match.ruleId}: {match.message} (z.B. {match.context})\n"
+                explanation_en += f"- {match.ruleId}: {GoogleTranslator(source='auto', target='en').translate(match.message)} (e.g., {match.context})\n"
+
+        # Add simple structure explanation (example)
+        words = text.split()
+        if len(words) >= 3 and "bin" in words:
+            explanation_de += "Struktur: Subjekt + Verb + Adjektiv (z.B. 'Ich bin gut').\n"
+            explanation_en += "Structure: Subject + Verb + Adjective (e.g., 'I am good').\n"
+
+        return f"{explanation_de}\n{explanation_en}"
+    except Exception as e:
+        return f"Error explaining grammar: {str(e)}"
