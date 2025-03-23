@@ -70,7 +70,7 @@ def grammar_agent(state: State) -> State:
     """Check grammar of user input."""
     try:
         user_input = state["messages"][-1]["content"]
-        response = check_grammar(user_input)
+        response = check_grammar.invoke(user_input)  # Use invoke instead of __call__
         state["messages"].append({"role": "ai", "content": response})
         progress.update("No grammar errors" in response)
     except Exception as e:
@@ -83,7 +83,7 @@ def vocabulary_agent(state: State) -> State:
     try:
         user_input = state["messages"][-1]["content"].strip()
         words = user_input.split()
-        response = define_word(words[-1] if words else "")
+        response = define_word.invoke(words[-1] if words else "")  # Use invoke
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in vocabulary agent: {str(e)}"})
@@ -94,7 +94,7 @@ def pronunciation_agent(state: State) -> State:
     """Generate pronunciation audio for text."""
     try:
         user_input = state["messages"][-1]["content"]
-        response = pronounce_text(user_input)
+        response = pronounce_text.invoke(user_input)  # Use invoke
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in pronunciation agent: {str(e)}"})
@@ -109,8 +109,10 @@ def translator_en_agent(state: State) -> State:
             text_to_translate = user_input.lower().split("translate to english")[-1].strip()
         else:
             text_to_translate = user_input
-        response = language_translator_en(text_to_translate)
-        state["messages"].append({"role": "ai", "content": f"English: {response}"})
+        response = language_translator_en.invoke(text_to_translate)  # Use invoke
+        full_response = f"English: {response}"
+        logger.info(f"English translation: {full_response}")
+        state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in English translation: {str(e)}"})
     state["next"] = END
@@ -124,8 +126,10 @@ def translator_bn_agent(state: State) -> State:
             text_to_translate = user_input.lower().split("translate to bangla")[-1].strip()
         else:
             text_to_translate = user_input
-        response = language_translator_bn(text_to_translate)
-        state["messages"].append({"role": "ai", "content": f"Bangla: {response}"})
+        response = language_translator_bn.invoke(text_to_translate)  # Use invoke
+        full_response = f"Bangla: {response}"
+        logger.info(f"Bangla translation: {full_response}")
+        state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
         state["messages"].append({"role": "ai", "content": f"Error in Bangla translation: {str(e)}"})
     state["next"] = END
@@ -139,19 +143,22 @@ def conversation_agent(state: State) -> State:
         prompt = f"Respond in German at {level} level to: {user_input}"
         german_response = get_llm().invoke([HumanMessage(content=prompt)]).content.strip()
         
-        # Generate translations
-        english_response = language_translator_en(german_response)
-        bangla_response = language_translator_bn(german_response)
+        # Generate translations using invoke
+        english_response = language_translator_en.invoke(german_response)
+        bangla_response = language_translator_bn.invoke(german_response)
         
-        # Format the full response
+        # Format the full response with clear separation
         full_response = (
             f"{german_response}\n"
             f"{english_response}\n"
             f"{bangla_response}"
         )
+        logger.info(f"Full conversation response: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in conversation: {str(e)}"})
+        error_msg = f"Error in conversation: {str(e)}"
+        logger.error(error_msg)
+        state["messages"].append({"role": "ai", "content": error_msg})
     state["next"] = END
     return state
 
