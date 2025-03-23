@@ -1,0 +1,38 @@
+# Python-specific ignores
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info
+dist/
+build/
+
+# Git-related ignores
+.git
+.gitignore
+
+# Local development ignores
+*.log
+*.md
+*.txt
+*.bak
+
+# Environment files with sensitive data
+.env
+secrets/
+
+# Docker-specific ignores
+Dockerfile
+.dockerignore
+
+# Data directories (if using volumes)
+data/
+chat_history.db
+pronunciation.mp3
+
+# Miscellaneous
+*.swp
+*.swo
