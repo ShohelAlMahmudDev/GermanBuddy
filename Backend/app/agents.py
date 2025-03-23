@@ -1,111 +1,191 @@
-from typing import List, Dict
+from typing import List, Dict, TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 from app.config import get_llm
-from app.tools import check_grammar, define_word, pronounce_text
-from googletrans import Translator
-# Custom State Type
-State = Dict[str, List[dict]]
+from app.tools import check_grammar, define_word, pronounce_text, language_translator_en, language_translator_bn
+import logging
 
-# Adaptive Difficulty Logic
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class StateType(TypedDict):
+    messages: List[Dict[str, str]]
+    next: str
+
+State = StateType
+
 class UserProgress:
     def __init__(self):
         self.correct_answers = 0
         self.total_questions = 0
+        self.level_thresholds = {"advanced": 0.8, "intermediate": 0.5}
     
-    def update(self, is_correct: bool):
+    def update(self, is_correct: bool) -> None:
+        """Update progress based on user performance"""
         self.total_questions += 1
         if is_correct:
             self.correct_answers += 1
+        logger.info(f"Progress updated: {self.correct_answers}/{self.total_questions}")
     
     def get_level(self) -> str:
+        """Determine user level based on accuracy"""
         accuracy = self.correct_answers / self.total_questions if self.total_questions > 0 else 0
-        if accuracy > 0.8:
+        if accuracy > self.level_thresholds["advanced"]:
             return "advanced"
-        elif accuracy > 0.5:
+        elif accuracy > self.level_thresholds["intermediate"]:
             return "intermediate"
         return "beginner"
 
 progress = UserProgress()
 
-# Agent Functions
 def teacher_agent(state: State) -> State:
-    user_input = state["messages"][-1]["content"].lower()
-    if "grammar" in user_input:
-        state["next"] = "grammar_agent"
-    elif "vocabulary" in user_input or "word" in user_input:
-        state["next"] = "vocabulary_agent"
-    elif "pronounce" in user_input or "pronunciation" in user_input:
-        state["next"] = "pronunciation_agent"
-    else:
+    """Route user input to the appropriate agent based on intent."""
+    if not state["messages"]:
         state["next"] = "conversation_agent"
+        return state
+        
+    user_input = state["messages"][-1]["content"].lower().strip()
+    logger.info(f"User input: {user_input}")
+    if not user_input:
+        state["next"] = "conversation_agent"
+        return state
+
+    intents = {
+        "grammar_agent": ["grammar", "check grammar", "grammar check"],
+        "vocabulary_agent": ["vocabulary", "word", "define", "meaning"],
+        "pronunciation_agent": ["pronounce", "pronunciation", "say"],
+        "translator_en_agent": ["translate to english", "translation english", "english", "en"],
+        "translator_bn_agent": ["translate to bangla", "translation bangla", "bangla", "bn"],
+    }
+    
+    state["next"] = "conversation_agent"  # Default to conversation
+    for agent, keywords in intents.items():
+        if any(keyword in user_input for keyword in keywords):
+            state["next"] = agent
+            logger.info(f"Routed to: {state['next']}")
+            break
     return state
 
 def grammar_agent(state: State) -> State:
-    user_input = state["messages"][-1]["content"]
-    response = check_grammar(user_input)
-    state["messages"].append({"role": "ai", "content": response})
-    progress.update("No grammar errors" in response)
+    """Check grammar of user input."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        response = check_grammar(user_input)
+        state["messages"].append({"role": "ai", "content": response})
+        progress.update("No grammar errors" in response)
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in grammar agent: {str(e)}"})
     state["next"] = END
     return state
 
 def vocabulary_agent(state: State) -> State:
-    user_input = state["messages"][-1]["content"]
-    word = user_input.split()[-1]
-    response = define_word(word)
-    state["messages"].append({"role": "ai", "content": response})
+    """Define a word from user input."""
+    try:
+        user_input = state["messages"][-1]["content"].strip()
+        words = user_input.split()
+        response = define_word(words[-1] if words else "")
+        state["messages"].append({"role": "ai", "content": response})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in vocabulary agent: {str(e)}"})
     state["next"] = END
     return state
 
 def pronunciation_agent(state: State) -> State:
-    user_input = state["messages"][-1]["content"]
-    audio_file = pronounce_text(user_input)
-    response = f"Pronunciation audio generated: {audio_file}"
-    state["messages"].append({"role": "ai", "content": response})
+    """Generate pronunciation audio for text."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        response = pronounce_text(user_input)
+        state["messages"].append({"role": "ai", "content": response})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in pronunciation agent: {str(e)}"})
+    state["next"] = END
+    return state
+
+def translator_en_agent(state: State) -> State:
+    """Translate user input to English."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        if "translate to english" in user_input.lower():
+            text_to_translate = user_input.lower().split("translate to english")[-1].strip()
+        else:
+            text_to_translate = user_input
+        response = language_translator_en(text_to_translate)
+        state["messages"].append({"role": "ai", "content": f"English: {response}"})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in English translation: {str(e)}"})
+    state["next"] = END
+    return state
+
+def translator_bn_agent(state: State) -> State:
+    """Translate user input to Bengali."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        if "translate to bangla" in user_input.lower():
+            text_to_translate = user_input.lower().split("translate to bangla")[-1].strip()
+        else:
+            text_to_translate = user_input
+        response = language_translator_bn(text_to_translate)
+        state["messages"].append({"role": "ai", "content": f"Bangla: {response}"})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in Bangla translation: {str(e)}"})
     state["next"] = END
     return state
 
 def conversation_agent(state: State) -> State:
-    user_input = state["messages"][-1]["content"]
-    level = progress.get_level()
-    prompt = f"Respond in German at {level} level to: {user_input}"
-    response = get_llm().invoke([HumanMessage(content=prompt)]).content
-    state["messages"].append({"role": "ai", "content": response})
+    """Handle general conversation in German with English and Bangla translations."""
+    try:
+        user_input = state["messages"][-1]["content"]
+        level = progress.get_level()
+        prompt = f"Respond in German at {level} level to: {user_input}"
+        german_response = get_llm().invoke([HumanMessage(content=prompt)]).content.strip()
+        
+        # Generate translations
+        english_response = language_translator_en(german_response)
+        bangla_response = language_translator_bn(german_response)
+        
+        # Format the full response
+        full_response = (
+            f"{german_response}\n"
+            f"{english_response}\n"
+            f"{bangla_response}"
+        )
+        state["messages"].append({"role": "ai", "content": full_response})
+    except Exception as e:
+        state["messages"].append({"role": "ai", "content": f"Error in conversation: {str(e)}"})
     state["next"] = END
     return state
 
-def language_translator(question:str):
-  # Initialize the translator
-  translator = Translator()
+def create_graph() -> StateGraph:
+    """Create and compile the state graph."""
+    try:
+        graph = StateGraph(State)
+        graph.add_node("teacher_agent", teacher_agent)
+        graph.add_node("grammar_agent", grammar_agent)
+        graph.add_node("vocabulary_agent", vocabulary_agent)
+        graph.add_node("pronunciation_agent", pronunciation_agent)
+        graph.add_node("translator_en_agent", translator_en_agent)
+        graph.add_node("translator_bn_agent", translator_bn_agent)
+        graph.add_node("conversation_agent", conversation_agent)
 
-  # Translate from English to Bengali
-  result = translator.translate(question, dest='en')
-  print("Translated (English ➜ Bengali):", result.text)
-  result = translator.translate(question, dest='bn')
-  # Translate from German to Bengali
-  #result = translator.translate("Hallo, wie geht es dir?", src='de', dest='bn')
-  print("Translated (German ➜ Bengali):", result.text)
-# Define and compile the graph
-def create_graph():
-    graph = StateGraph(State)
-    graph.add_node("teacher_agent", teacher_agent)
-    graph.add_node("grammar_agent", grammar_agent)
-    graph.add_node("vocabulary_agent", vocabulary_agent)
-    graph.add_node("pronunciation_agent", pronunciation_agent)
-    graph.add_node("conversation_agent", conversation_agent)
-
-    graph.set_entry_point("teacher_agent")
-    graph.add_conditional_edges(
-        "teacher_agent",
-        lambda state: state["next"],
-        {
-            "grammar_agent": "grammar_agent",
-            "vocabulary_agent": "vocabulary_agent",
-            "pronunciation_agent": "pronunciation_agent",
-            "conversation_agent": "conversation_agent",
-            END: END
-        }
-    )
-    return graph.compile()
+        graph.set_entry_point("teacher_agent")
+        graph.add_conditional_edges(
+            "teacher_agent",
+            lambda state: state["next"],
+            {
+                "grammar_agent": "grammar_agent",
+                "vocabulary_agent": "vocabulary_agent",
+                "pronunciation_agent": "pronunciation_agent",
+                "translator_en_agent": "translator_en_agent",
+                "translator_bn_agent": "translator_bn_agent",
+                "conversation_agent": "conversation_agent",
+                END: END
+            }
+        )
+        compiled_graph = graph.compile()
+        logger.info("Graph successfully compiled")
+        return compiled_graph
+    except Exception as e:
+        logger.error(f"Failed to create graph: {str(e)}")
+        raise RuntimeError(f"Failed to create graph: {str(e)}")
 
 app_graph = create_graph()
