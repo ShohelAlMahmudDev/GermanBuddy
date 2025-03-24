@@ -79,7 +79,7 @@ def explain_grammar(text: str) -> str:
 
         tool = LanguageTool('de-DE')
         matches = tool.check(text)
-        #print(text)
+        print("explain_grammar")
         # Basic grammar analysis (expand as needed)
         explanation_de = "Grammatikalische Erklärung:\n"
         explanation_en = "Grammar Explanation:\n"

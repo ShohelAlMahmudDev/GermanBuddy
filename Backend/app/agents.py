@@ -2,7 +2,14 @@ from typing import List, Dict, TypedDict
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
 from app.config import get_llm
-from app.tools import check_grammar, define_word, pronounce_text, language_translator_en, language_translator_bn, explain_grammar
+from app.tools import (
+    check_grammar,
+    define_word,
+    pronounce_text,
+    language_translator_en,
+    language_translator_bn,
+    explain_grammar,
+)
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -72,10 +79,13 @@ def grammar_agent(state: State) -> State:
     try:
         user_input = state["messages"][-1]["content"]
         response = check_grammar.invoke(user_input)
+        logger.info(f"Grammar check response: {response}")
         state["messages"].append({"role": "ai", "content": response})
         progress.update("No grammar errors" in response)
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in grammar agent: {str(e)}"})
+        err = f"Error in grammar agent: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -85,9 +95,12 @@ def vocabulary_agent(state: State) -> State:
         user_input = state["messages"][-1]["content"].strip()
         words = user_input.split()
         response = define_word.invoke(words[-1] if words else "")
+        logger.info(f"Vocabulary definition response: {response}")
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in vocabulary agent: {str(e)}"})
+        err = f"Error in vocabulary agent: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -96,9 +109,12 @@ def pronunciation_agent(state: State) -> State:
     try:
         user_input = state["messages"][-1]["content"]
         response = pronounce_text.invoke(user_input)
+        logger.info(f"Pronunciation response: {response}")
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in pronunciation agent: {str(e)}"})
+        err = f"Error in pronunciation agent: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -115,7 +131,9 @@ def translator_en_agent(state: State) -> State:
         logger.info(f"English translation: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in English translation: {str(e)}"})
+        err = f"Error in English translation: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -132,7 +150,9 @@ def translator_bn_agent(state: State) -> State:
         logger.info(f"Bangla translation: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in Bangla translation: {str(e)}"})
+        err = f"Error in Bangla translation: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -145,34 +165,48 @@ def grammar_explain_agent(state: State) -> State:
         else:
             text_to_explain = user_input
         response = explain_grammar.invoke(text_to_explain)
+        logger.info(f"Grammar explanation: {response}")
         state["messages"].append({"role": "ai", "content": response})
     except Exception as e:
-        state["messages"].append({"role": "ai", "content": f"Error in grammar explanation: {str(e)}"})
+        err = f"Error in grammar explanation: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
 def conversation_agent(state: State) -> State:
-    """Handle general conversation in German with English and Bangla translations."""
+    """
+    Handle general conversation in German.
+    Returns the response in German along with English and Bangla translations and a grammar explanation.
+    """
     try:
         user_input = state["messages"][-1]["content"]
         level = progress.get_level()
         prompt = f"Respond in German at {level} level to: {user_input}"
+        logger.info(f"LLM prompt: {prompt}")
         german_response = get_llm().invoke([HumanMessage(content=prompt)]).content.strip()
+        logger.info(f"German response: {german_response}")
         
+        # Directly call the underlying tools and log the outputs
         english_response = language_translator_en.invoke(german_response)
+        logger.info(f"English translation: {english_response}")
         bangla_response = language_translator_bn.invoke(german_response)
+        logger.info(f"Bangla translation: {bangla_response}")
+        grammer_response = explain_grammar.invoke(german_response)
+        logger.info(f"Grammar explanation: {grammer_response}")
         
         full_response = (
             f"{german_response}\n"
             f"{english_response}\n"
-            f"{bangla_response}"
+            f"{bangla_response}\n"
+            f"{grammer_response}"
         )
         logger.info(f"Full conversation response: {full_response}")
         state["messages"].append({"role": "ai", "content": full_response})
     except Exception as e:
-        error_msg = f"Error in conversation: {str(e)}"
-        logger.error(error_msg)
-        state["messages"].append({"role": "ai", "content": error_msg})
+        err = f"Error in conversation: {str(e)}"
+        logger.error(err)
+        state["messages"].append({"role": "ai", "content": err})
     state["next"] = END
     return state
 
@@ -208,7 +242,8 @@ def create_graph() -> StateGraph:
         logger.info("Graph successfully compiled")
         return compiled_graph
     except Exception as e:
-        logger.error(f"Failed to create graph: {str(e)}")
-        raise RuntimeError(f"Failed to create graph: {str(e)}")
+        err = f"Failed to create graph: {str(e)}"
+        logger.error(err)
+        raise RuntimeError(err)
 
 app_graph = create_graph()
